@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IQ Gen — AI Interview Question Generator</title>
+  <meta name="description" content="Generate thoughtful, role-specific interview questions powered by Google Gemini AI. Paste a job title and get 3 expert-crafted questions instantly.">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+
+  <main class="container">
+
+    <!-- ================================================================
+         Settings Panel — collapsible API key input
+         ================================================================ -->
+    <section id="settings-panel" class="settings-panel">
+      <button type="button" id="settings-toggle" class="settings-toggle" aria-expanded="false" aria-controls="settings-body">
+        <span class="settings-toggle__icon">▸</span>
+        Settings
+      </button>
+      <div id="settings-body" class="settings-body">
+        <label for="api-key-input">Gemini API Key</label>
+        <div class="settings-row">
+          <input
+            type="password"
+            id="api-key-input"
+            class="api-key-input"
+            placeholder="Paste your API key here…"
+            autocomplete="off"
+          >
+          <button type="button" id="save-key-btn" class="btn-save-key">Save Key</button>
+        </div>
+        <p id="key-status" class="key-status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         Hero Header
+         ================================================================ -->
+    <header class="hero">
+      <h1>IQ Gen<span class="accent-dot">.</span></h1>
+      <p class="subtitle">AI-powered interview questions, tailored to any role.</p>
+    </header>
+
+    <!-- ================================================================
+         Question Form
+         ================================================================ -->
+    <form id="question-form" novalidate>
+      <div class="form-group">
+        <label for="job-title-input">Job Title</label>
+        <input
+          type="text"
+          id="job-title-input"
+          class="form-input"
+          value="Customer Success Manager"
+          autocomplete="off"
+        >
+        <p id="validation-message" class="validation-message" aria-live="polite"></p>
+      </div>
+      <div class="form-actions">
+        <button type="submit" id="generate-btn" class="btn-primary">Generate Questions</button>
+        <button type="button" id="clear-btn" class="btn-secondary">Clear</button>
+      </div>
+    </form>
+
+    <!-- ================================================================
+         Results — cards, skeletons, or error banner rendered here by JS
+         ================================================================ -->
+    <section id="results" aria-live="polite"></section>
+
+    <!-- ================================================================
+         Footer
+         ================================================================ -->
+    <footer class="footer">
+      <p>Built with the <a href="https://ai.google.dev/" target="_blank" rel="noopener noreferrer">Gemini API</a></p>
+    </footer>
+
+  </main>
+
+</body>
+</html>
