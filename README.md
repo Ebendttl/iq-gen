@@ -8,6 +8,9 @@ AI-powered interview question generator that creates thoughtful, role-specific q
 - **Google Gemini API** (`gemini-2.0-flash`) — AI question generation via REST
 - **GitHub Pages** — static hosting, no server required
 
+## Live Demo
+*Coming soon! The site is currently deploying via GitHub Pages.*
+
 ## Getting Started
 
 1. **Clone the repository**
