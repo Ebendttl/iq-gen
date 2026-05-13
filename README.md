@@ -9,7 +9,7 @@ AI-powered interview question generator that creates thoughtful, role-specific q
 - **GitHub Pages** — static hosting, no server required
 
 ## Live Demo
-*Coming soon! The site is currently deploying via GitHub Pages.*
+🚀 **[View the Live App here](https://ebendttl.github.io/iq-gen/)**
 
 ## Getting Started
 
@@ -39,10 +39,6 @@ AI-powered interview question generator that creates thoughtful, role-specific q
 5. **Generate questions**
 
    Enter any job title and click **Generate Questions** to receive 3 expert-crafted interview questions.
-
-## Live URL
-
-[INSERT_LIVE_URL]
 
 ## Design Decisions
 
