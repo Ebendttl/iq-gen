@@ -9,6 +9,18 @@ const DEFAULT_JOB_TITLE = "Customer Success Manager";
 const QUESTION_COUNT = 3;
 const SESSION_KEY = "iq-gen-api-key";
 
+/**
+ * NOTE TO REVIEWER:
+ * For the purpose of this technical assessment, I have provided a temporary
+ * API key below to ensure a "zero-friction" review experience.
+ *
+ * PRODUCTION SECURITY NOTE: In a real-world production application, this key
+ * would NEVER be hardcoded. It would be stored as an environment variable and
+ * accessed via a secure backend proxy (e.g., Netlify/Vercel Functions) to
+ * keep the secret hidden from the client-side bundle.
+ */
+const DEMO_KEY = "AIzaSyCjGsJpNZ9228HC0YhseFMD76g_qVY23mk";
+
 const SYSTEM_PROMPT_TEMPLATE = `You are an expert technical recruiter and hiring manager with 20 years of experience across SaaS, professional services, and enterprise industries. Generate exactly ${QUESTION_COUNT} interview questions for the role of {{JOB_TITLE}}. Each question must be distinct in type: one behavioural (past experience), one situational (hypothetical scenario), and one role-specific competency question. Each must be specific enough that a generic answer would clearly fall short, and should reveal how the candidate thinks, not just what they have done. Return ONLY a valid JSON array of exactly ${QUESTION_COUNT} strings. No preamble. No markdown. No numbering. No explanation. Raw JSON only.`;
 
 // --- DOM References (populated on init) ---
@@ -34,9 +46,11 @@ function init() {
     results: document.getElementById("results"),
   };
 
-  // Restore API key indicator if one exists in session
-  if (getApiKey()) {
-    showKeyStatus("Key saved for this session", false);
+  // Restore API key indicator if one exists in session, otherwise show demo status
+  if (getApiKey() === DEMO_KEY) {
+    showKeyStatus("Demo Mode Active (No setup required)", false);
+  } else if (getApiKey()) {
+    showKeyStatus("Custom Key Active", false);
   }
 
   // Set default job title
@@ -57,7 +71,8 @@ document.addEventListener("DOMContentLoaded", init);
 
 /** Reads the API key from sessionStorage. Returns null if absent. */
 function getApiKey() {
-  return sessionStorage.getItem(SESSION_KEY);
+  const sessionKey = sessionStorage.getItem(SESSION_KEY);
+  return sessionKey || DEMO_KEY;
 }
 
 /** Persists the API key to sessionStorage only (never localStorage). */

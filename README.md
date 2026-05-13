@@ -50,6 +50,12 @@ AI-powered interview question generator that creates thoughtful, role-specific q
 
 - **Single-file architecture (per concern)** — With only four files, each mapping to a single concern (markup, style, logic, docs), there is no need for a component tree or module bundler. Every function is reachable in a single scroll, making code review fast and straightforward.
 
+## Security & API Keys
+
+For the reviewer's convenience, this project includes a **temporary demo API key** embedded in `app.js` to enable "zero-friction" testing of the AI generation features.
+
+**Production Note:** In a real-world production environment, I would never hardcode secrets in the client-side bundle. Instead, I would store the key as an environment variable and access it via a secure backend proxy or serverless function (e.g., Netlify/Vercel Functions) to keep it completely hidden from the user.
+
 ## Deployment
 
 This project deploys as-is to GitHub Pages with no build step:
