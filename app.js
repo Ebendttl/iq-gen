@@ -3,28 +3,18 @@
 // ============================================================================
 
 // --- Constants ---
-const GEMINI_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+const GEMINI_CLIENT_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+const NETLIFY_PROXY_ENDPOINT = "/.netlify/functions/generate";
 const DEFAULT_JOB_TITLE = "Customer Success Manager";
 const QUESTION_COUNT = 3;
 const SESSION_KEY = "iq-gen-api-key";
 
-/**
- * NOTE TO REVIEWER:
- * For the purpose of this technical assessment, I have provided a temporary
- * API key below to ensure a "zero-friction" review experience.
- *
- * PRODUCTION SECURITY NOTE: In a real-world production application, this key
- * would NEVER be hardcoded. It would be stored as an environment variable and
- * accessed via a secure backend proxy (e.g., Netlify/Vercel Functions) to
- * keep the secret hidden from the client-side bundle.
- */
-const DEMO_KEY = "AIzaSyCjGsJpNZ9228HC0YhseFMD76g_qVY23mk";
-
 const SYSTEM_PROMPT_TEMPLATE = `You are an expert technical recruiter and hiring manager with 20 years of experience across SaaS, professional services, and enterprise industries. Generate exactly ${QUESTION_COUNT} interview questions for the role of {{JOB_TITLE}}. Each question must be distinct in type: one behavioural (past experience), one situational (hypothetical scenario), and one role-specific competency question. Each must be specific enough that a generic answer would clearly fall short, and should reveal how the candidate thinks, not just what they have done. Return ONLY a valid JSON array of exactly ${QUESTION_COUNT} strings. No preamble. No markdown. No numbering. No explanation. Raw JSON only.`;
 
-// --- DOM References (populated on init) ---
+// --- Global State & DOM References ---
 let els = {};
+let lastGeneratedQuestions = [];
+let lastJobTitle = "";
 
 // ============================================================================
 // Initialisation
@@ -62,7 +52,15 @@ function init() {
   els.form.addEventListener("submit", handleSubmit);
   els.clearBtn.addEventListener("click", handleClear);
 
+  // Theme Toggle
+  const themeToggleBtn = document.getElementById("theme-toggle");
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener("click", toggleTheme);
+  }
+  initTheme();
+
   // DEEP-LINKING: Handle 'role' URL parameter for instant generation
+
   const params = new URLSearchParams(window.location.search);
   const roleParam = params.get("role");
   if (roleParam) {
@@ -80,8 +78,20 @@ document.addEventListener("DOMContentLoaded", init);
 
 /** Reads the API key from sessionStorage. Returns null if absent. */
 function getApiKey() {
-  const sessionKey = sessionStorage.getItem(SESSION_KEY);
-  return sessionKey || DEMO_KEY;
+  return sessionStorage.getItem(SESSION_KEY);
+}
+
+/** Pre-fills the settings UI if a key exists in session. */
+function initApiKeyUI() {
+  const saved = getApiKey();
+  if (saved) {
+    els.apiKeyInput.value = saved;
+    els.keyStatus.textContent = "Custom key loaded from session.";
+    els.keyStatus.classList.add("is-visible");
+  } else {
+    els.keyStatus.textContent = "Serverless Proxy Active (No setup required)";
+    els.keyStatus.classList.add("is-visible");
+  }
 }
 
 /** Persists the API key to sessionStorage only (never localStorage). */
@@ -106,6 +116,30 @@ function showKeyStatus(message, isError) {
   els.keyStatus.textContent = message;
   els.keyStatus.classList.toggle("is-error", isError);
   els.keyStatus.classList.add("is-visible");
+}
+
+// ============================================================================
+// Theme Management
+// ============================================================================
+
+function initTheme() {
+  const savedTheme = localStorage.getItem("iq-gen-theme");
+  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  
+  if (savedTheme === "dark" || (!savedTheme && systemDark)) {
+    document.documentElement.setAttribute("data-theme", "dark");
+  }
+}
+
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+  if (isDark) {
+    document.documentElement.removeAttribute("data-theme");
+    localStorage.setItem("iq-gen-theme", "light");
+  } else {
+    document.documentElement.setAttribute("data-theme", "dark");
+    localStorage.setItem("iq-gen-theme", "dark");
+  }
 }
 
 // ============================================================================
@@ -143,6 +177,9 @@ function setValidationMessage(message) {
 function setLoadingState(isLoading) {
   els.generateBtn.disabled = isLoading;
   els.generateBtn.textContent = isLoading ? "Generating…" : "Generate Questions";
+  
+  // A11y: Announce to screen readers that content is loading
+  els.results.setAttribute("aria-busy", String(isLoading));
 
   if (isLoading) {
     els.results.innerHTML = buildSkeletonCards();
@@ -167,54 +204,49 @@ function buildSkeletonCards() {
 // Gemini API Communication
 // ============================================================================
 
-/** Builds the full prompt string with the job title interpolated. */
-function buildPrompt(jobTitle) {
-  return SYSTEM_PROMPT_TEMPLATE.replace("{{JOB_TITLE}}", jobTitle.trim());
-}
-
-/** Builds the request body for the Gemini generateContent endpoint. */
-function buildRequestBody(jobTitle) {
-  return {
-    contents: [
-      {
-        parts: [{ text: buildPrompt(jobTitle) }],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: "application/json",
-    },
-  };
-}
-
-/**
- * Calls the Gemini API and returns a parsed array of question strings.
- * Throws descriptive errors for each failure mode.
- */
+/** Calls the API (either Netlify Proxy or direct Google API) to generate questions. */
 async function fetchInterviewQuestions(jobTitle) {
   const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error("API key not found. Please add your Gemini API key in the Settings panel above.");
-  }
-
-  const url = `${GEMINI_ENDPOINT}?key=${apiKey}`;
-  const body = buildRequestBody(jobTitle);
-
+  
   let response;
-  try {
-    response = await fetch(url, {
+  
+  if (apiKey) {
+    // -------------------------------------------------------------
+    // Route 1: Client-Side Fetch (If user provided a custom key)
+    // -------------------------------------------------------------
+    const prompt = SYSTEM_PROMPT_TEMPLATE.replace("{{JOB_TITLE}}", jobTitle);
+    const payload = {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.7,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 1024,
+      },
+    };
+
+    response = await fetch(`${GEMINI_CLIENT_ENDPOINT}?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
-  } catch {
-    // Network-level failure (offline, DNS, CORS, etc.)
-    throw new Error("Network error — please check your connection and try again.");
+  } else {
+    // -------------------------------------------------------------
+    // Route 2: Secure Serverless Proxy (Default zero-friction path)
+    // -------------------------------------------------------------
+    response = await fetch(NETLIFY_PROXY_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobTitle }),
+    });
   }
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    const detail = errorData?.error?.message || response.statusText;
-    throw new Error(`API error ${response.status}: ${detail}`);
+    const errorData = await response.json().catch(() => ({}));
+    if (response.status === 403) {
+      throw new Error("API error 403: The custom API key is invalid or restricted.");
+    }
+    throw new Error(`API error ${response.status}: ${errorData.error?.message || "Unknown error occurred"}`);
   }
 
   const data = await response.json();
@@ -262,7 +294,7 @@ function renderQuestions(questions) {
       <article class="question-card" style="animation-delay: ${i * 0.1}s">
         <div class="question-header">
           <span class="question-badge">${labels[i]}</span>
-          <button class="btn-copy" onclick="copyToClipboard(this, '${q.replace(/'/g, "\\'")}')" title="Copy to clipboard">
+          <button class="btn-copy" onclick="copyToClipboard(this, '${q.replace(/'/g, "\\'")}')" aria-label="Copy question ${i + 1} to clipboard" title="Copy to clipboard">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             <span>Copy</span>
           </button>
@@ -272,6 +304,17 @@ function renderQuestions(questions) {
       </article>`
     )
     .join("");
+
+  // Append Export Button
+  const exportDelay = questions.length * 0.1;
+  els.results.innerHTML += `
+    <div class="export-container" style="animation-delay: ${exportDelay}s">
+      <button type="button" class="btn-secondary btn-export" onclick="exportAsText()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Export as Text
+      </button>
+    </div>
+  `;
 }
 
 /**
@@ -300,6 +343,33 @@ async function copyToClipboard(button, text) {
 
 // Expose to global scope for inline onclick handlers
 window.copyToClipboard = copyToClipboard;
+window.exportAsText = exportAsText;
+
+/**
+ * Creates a text file from the generated questions and triggers a download.
+ */
+function exportAsText() {
+  if (!lastGeneratedQuestions.length) return;
+
+  const timestamp = new Date().toLocaleDateString();
+  const textContent = 
+    `Role: ${lastJobTitle}\n` +
+    `Generated: ${timestamp}\n` +
+    `=========================================\n\n` +
+    lastGeneratedQuestions.map((q, i) => `Question ${i + 1}:\n${q}\n`).join("\n");
+
+  const blob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Interview_Questions_${lastJobTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`;
+  
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 
 /** Minimal HTML escaping to prevent injection from API output. */
@@ -355,6 +425,8 @@ async function handleSubmit(event) {
 
   try {
     const questions = await fetchInterviewQuestions(jobTitle);
+    lastGeneratedQuestions = questions;
+    lastJobTitle = jobTitle;
     renderQuestions(questions);
   } catch (err) {
     showError(err.message);
@@ -368,6 +440,9 @@ function handleClear() {
   els.jobTitleInput.value = DEFAULT_JOB_TITLE;
   setValidationMessage(null);
   els.results.innerHTML = "";
+  els.results.removeAttribute("aria-busy");
   els.generateBtn.disabled = false;
   els.generateBtn.textContent = "Generate Questions";
+  lastGeneratedQuestions = [];
+  lastJobTitle = "";
 }

@@ -26,6 +26,18 @@
   --font-heading: "DM Serif Display", Georgia, serif;
 }
 
+[data-theme="dark"] {
+  --bg: #121212;
+  --surface: #1E1E1E;
+  --accent: #EAEAEA;
+  --highlight: #E8642A;
+  --highlight-hover: #F27841;
+  --muted: #A0A0A0;
+  --border: #333333;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
 /* --- Reset & Base --- */
 *,
 *::before,
@@ -61,6 +73,56 @@ body {
   .container {
     padding: 4rem 2rem 6rem;
   }
+}
+
+/* ==========================================================================
+   Header Controls (Theme Toggle)
+   ========================================================================== */
+
+.header-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1.5rem;
+}
+
+.theme-toggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(26, 26, 46, 0.05);
+}
+
+[data-theme="dark"] .theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.theme-toggle .sun-icon {
+  display: none;
+}
+
+.theme-toggle .moon-icon {
+  display: block;
+}
+
+[data-theme="dark"] .theme-toggle .sun-icon {
+  display: block;
+}
+
+[data-theme="dark"] .theme-toggle .moon-icon {
+  display: none;
 }
 
 /* ==========================================================================
@@ -428,12 +490,6 @@ body {
 }
 
 .question-number {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.5rem;
-}
-
-.question-number {
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted);
@@ -446,6 +502,45 @@ body {
   font-size: 1.0625rem;
   line-height: 1.65;
   color: var(--accent);
+}
+
+/* ==========================================================================
+   Export Area
+   ========================================================================== */
+
+.export-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 2.5rem;
+  opacity: 0;
+  animation: fadeInUp 0.5s ease forwards;
+}
+
+.btn-export {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem 1.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  background-color: transparent;
+  border: 2px solid var(--border);
+}
+
+.btn-export:hover {
+  background-color: rgba(26, 26, 46, 0.03);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ==========================================================================
+   Accessibility
+   ========================================================================== */
+
+*:focus-visible {
+  outline: 2px solid var(--highlight);
+  outline-offset: 3px;
+  border-radius: inherit;
 }
 
 /* ==========================================================================
@@ -467,9 +562,9 @@ body {
   border-radius: 4px;
   background: linear-gradient(
     90deg,
-    var(--border) 25%,
-    #ece9e4 37%,
-    var(--border) 63%
+    var(--surface) 25%,
+    var(--border) 37%,
+    var(--surface) 63%
   );
   background-size: 800px 100%;
   animation: shimmer 1.6s linear infinite;

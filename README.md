@@ -14,6 +14,9 @@ AI-powered interview question generator that creates thoughtful, role-specific q
 ## Premium Features
 - **Deep-Linking**: Pass a role via URL (e.g., `?role=Customer+Success+Manager`) for instant, zero-click generation.
 - **One-Click Copy**: Each question includes a dedicated copy button with haptic-style visual feedback.
+- **Export to Text**: A dedicated button allows users to download the generated questions as a clean `.txt` file.
+- **Dynamic Theming**: Full Light/Dark mode support. Automatically respects OS-level preferences and remembers user overrides via `localStorage`.
+- **Accessibility (a11y)**: Built with screen-reader support in mind, utilizing `aria-live` and `aria-busy` for dynamic content announcements, plus full keyboard focus-visibility.
 - **Seamless Demo**: Includes a built-in demo API key to ensure a frictionless review experience.
 
 ## Getting Started
@@ -55,21 +58,22 @@ AI-powered interview question generator that creates thoughtful, role-specific q
 
 - **Single-file architecture (per concern)** — With only four files, each mapping to a single concern (markup, style, logic, docs), there is no need for a component tree or module bundler. Every function is reachable in a single scroll, making code review fast and straightforward.
 
+## Deployment (Netlify)
+
+This project uses **Netlify** to securely host the frontend and proxy the API calls.
+
+1. Create a free account at [Netlify](https://www.netlify.com/).
+2. Connect your GitHub repository.
+3. In your Netlify Site Settings, add an Environment Variable:
+   - Key: `GEMINI_API_KEY`
+   - Value: Your actual Gemini API key.
+4. Deploy! The frontend will automatically route requests through `/.netlify/functions/generate` to keep your key completely hidden from the browser.
+
 ## Security & API Keys
 
-For the reviewer's convenience, this project includes a **temporary demo API key** embedded in `app.js` to enable "zero-friction" testing of the AI generation features.
+> **Production Setup**: The API key is securely stored in a Netlify Environment Variable and accessed only via a Serverless Function (`netlify/functions/generate.js`). The frontend never sees the API key.
 
-**Production Note:** In a real-world production environment, I would never hardcode secrets in the client-side bundle. Instead, I would store the key as an environment variable and access it via a secure backend proxy or serverless function (e.g., Netlify/Vercel Functions) to keep it completely hidden from the user.
-
-## Deployment
-
-This project deploys as-is to GitHub Pages with no build step:
-
-1. Push to the `main` branch
-2. Go to **Settings → Pages → Source** → select `main` branch, `/ (root)` folder
-3. Click **Save** — the site will be live within a minute
-
-All asset paths are relative, so no base URL configuration is needed.
+> **Reviewer Override**: For testing purposes, reviewers can optionally input their own Gemini API key in the UI "Settings" panel. If provided, the app will bypass the proxy and hit Google directly using the provided key. The key is only stored in `sessionStorage` and is destroyed when the tab closes.
 
 ## License
 
