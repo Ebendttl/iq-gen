@@ -61,6 +61,15 @@ function init() {
   els.saveKeyBtn.addEventListener("click", handleSaveKey);
   els.form.addEventListener("submit", handleSubmit);
   els.clearBtn.addEventListener("click", handleClear);
+
+  // DEEP-LINKING: Handle 'role' URL parameter for instant generation
+  const params = new URLSearchParams(window.location.search);
+  const roleParam = params.get("role");
+  if (roleParam) {
+    els.jobTitleInput.value = roleParam;
+    // Short delay to ensure DOM is ready and UI feels natural
+    setTimeout(() => els.form.requestSubmit(), 300);
+  }
 }
 
 document.addEventListener("DOMContentLoaded", init);
@@ -251,13 +260,47 @@ function renderQuestions(questions) {
     .map(
       (q, i) => `
       <article class="question-card" style="animation-delay: ${i * 0.1}s">
-        <span class="question-badge">${labels[i]}</span>
+        <div class="question-header">
+          <span class="question-badge">${labels[i]}</span>
+          <button class="btn-copy" onclick="copyToClipboard(this, '${q.replace(/'/g, "\\'")}')" title="Copy to clipboard">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>Copy</span>
+          </button>
+        </div>
         <p class="question-number">Question ${i + 1}</p>
         <p class="question-text">${escapeHtml(q)}</p>
       </article>`
     )
     .join("");
 }
+
+/**
+ * Copies text to the clipboard and provides visual feedback on the button.
+ */
+async function copyToClipboard(button, text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    
+    // Success State
+    const originalContent = button.innerHTML;
+    button.classList.add('is-success');
+    button.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      <span>Copied!</span>
+    `;
+    
+    setTimeout(() => {
+      button.classList.remove('is-success');
+      button.innerHTML = originalContent;
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy: ', err);
+  }
+}
+
+// Expose to global scope for inline onclick handlers
+window.copyToClipboard = copyToClipboard;
+
 
 /** Minimal HTML escaping to prevent injection from API output. */
 function escapeHtml(str) {

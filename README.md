@@ -11,6 +11,11 @@ AI-powered interview question generator that creates thoughtful, role-specific q
 ## Live Demo
 🚀 **[View the Live App here](https://ebendttl.github.io/iq-gen/)**
 
+## Premium Features
+- **Deep-Linking**: Pass a role via URL (e.g., `?role=Customer+Success+Manager`) for instant, zero-click generation.
+- **One-Click Copy**: Each question includes a dedicated copy button with haptic-style visual feedback.
+- **Seamless Demo**: Includes a built-in demo API key to ensure a frictionless review experience.
+
 ## Getting Started
 
 1. **Clone the repository**
