@@ -36,12 +36,8 @@ function init() {
     results: document.getElementById("results"),
   };
 
-  // Restore API key indicator if one exists in session, otherwise show demo status
-  if (getApiKey() === DEMO_KEY) {
-    showKeyStatus("Demo Mode Active (No setup required)", false);
-  } else if (getApiKey()) {
-    showKeyStatus("Custom Key Active", false);
-  }
+  // Restore API key UI state
+  initApiKeyUI();
 
   // Set default job title
   els.jobTitleInput.value = DEFAULT_JOB_TITLE;
