@@ -15,3 +15,7 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+\n# Local environment variables\n.env
+
+# Local Netlify folder
+.netlify

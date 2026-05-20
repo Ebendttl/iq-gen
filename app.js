@@ -200,53 +200,137 @@ function buildSkeletonCards() {
 // Gemini API Communication
 // ============================================================================
 
-/** Calls the API (either Netlify Proxy or direct Google API) to generate questions. */
+/**
+ * Calls the API (either Netlify Proxy or direct Google API) to generate questions.
+ * Implements a robust model fallback strategy for custom API keys, and handles proxy retries.
+ */
 async function fetchInterviewQuestions(jobTitle) {
   const apiKey = getApiKey();
-  
-  let response;
-  
-  if (apiKey) {
-    // -------------------------------------------------------------
-    // Route 1: Client-Side Fetch (If user provided a custom key)
-    // -------------------------------------------------------------
-    const prompt = SYSTEM_PROMPT_TEMPLATE.replace("{{JOB_TITLE}}", jobTitle);
-    const payload = {
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 1024,
-      },
-    };
 
-    response = await fetch(`${GEMINI_CLIENT_ENDPOINT}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } else {
-    // -------------------------------------------------------------
-    // Route 2: Secure Serverless Proxy (Default zero-friction path)
-    // -------------------------------------------------------------
-    response = await fetch(NETLIFY_PROXY_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobTitle }),
-    });
+  // Route 2: Secure Serverless Proxy (default zero-friction path)
+  if (!apiKey) {
+    return fetchInterviewQuestionsViaProxy(jobTitle);
   }
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    if (response.status === 403) {
-      throw new Error("API error 403: The custom API key is invalid or restricted.");
+  // Route 1: Client-Side Fetch (user provided a custom key)
+  const prompt = SYSTEM_PROMPT_TEMPLATE.replace("{{JOB_TITLE}}", jobTitle);
+  const payload = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 1024,
+      responseMimeType: "application/json",
+    },
+  };
+
+  const MODELS = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"];
+
+  for (const model of MODELS) {
+    const MAX_RETRIES = 2;
+    const BASE_DELAY_MS = 1500;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          return parseGeminiResponse(data);
+        }
+
+        const errorData = await response.json().catch(() => ({}));
+
+        // --- Non-retryable/non-fallback errors: fail immediately ---
+        if (response.status === 403) {
+          throw new Error("Your API key is invalid or has been restricted. Please check Settings and try a different key.");
+        }
+        if (response.status === 400) {
+          throw new Error(`API configuration error: ${errorData.error?.message || "Invalid request parameter."}`);
+        }
+
+        // --- 429 Rate Limit: retry with backoff if attempts remain ---
+        if (response.status === 429 && attempt < MAX_RETRIES) {
+          const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+          console.warn(`Rate limited (429) for ${model}. Retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          await sleep(delay);
+          continue;
+        }
+
+        // For 503 or exhausted rate limits, break and fall back to the next model
+        break;
+
+      } catch (err) {
+        if (err.message.includes("Your API key") || err.message.includes("API configuration error")) {
+          throw err;
+        }
+        console.error(`Fetch error with model ${model}:`, err);
+        if (attempt < MAX_RETRIES) {
+          await sleep(BASE_DELAY_MS * Math.pow(2, attempt));
+          continue;
+        }
+        break;
+      }
     }
-    throw new Error(`API error ${response.status}: ${errorData.error?.message || "Unknown error occurred"}`);
   }
 
-  const data = await response.json();
-  return parseGeminiResponse(data);
+  throw new Error("All available Gemini models are currently experiencing high demand. Please try again later.");
+}
+
+/** Calls the local Netlify proxy function to run generation server-side. */
+async function fetchInterviewQuestionsViaProxy(jobTitle) {
+  const MAX_RETRIES = 3;
+  const BASE_DELAY_MS = 2000;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(NETLIFY_PROXY_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobTitle }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return parseGeminiResponse(data);
+      }
+
+      const errorData = await response.json().catch(() => ({}));
+
+      // Non-retryable errors
+      if (response.status !== 429 && response.status !== 503) {
+        throw new Error(`API error ${response.status}: ${errorData.error?.message || "An unexpected error occurred."}`);
+      }
+
+      if (attempt < MAX_RETRIES) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+        console.warn(`Proxy request failed (${response.status}). Retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        await sleep(delay);
+      } else {
+        throw new Error(
+          errorData.error?.message || "The AI service is temporarily busy due to high demand. Please wait a moment and try again."
+        );
+      }
+    } catch (err) {
+      if (attempt === MAX_RETRIES) {
+        throw err;
+      }
+      await sleep(BASE_DELAY_MS * Math.pow(2, attempt));
+    }
+  }
+}
+
+/** Returns a promise that resolves after the given milliseconds. */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
