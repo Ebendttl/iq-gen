@@ -15,7 +15,15 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
-\n# Local environment variables\n.env
+
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local environment variables
+.env
 
 # Local Netlify folder
-.netlify
+.netlify/
