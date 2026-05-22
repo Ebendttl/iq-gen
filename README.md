@@ -1,80 +1,163 @@
-# IQ Gen
+# IQ Gen — AI Interview Question Generator
 
-AI-powered interview question generator that creates thoughtful, role-specific questions for any job title. Built with vanilla HTML, CSS, and JavaScript — no frameworks, no build tools, instant deploy.
+AI-powered interview question generator that creates thoughtful, role-specific questions for any job title. Built with vanilla HTML, CSS, and JavaScript — no frameworks, no build tools, instant deploy. 
 
-## Tech Stack
+---
 
-- **HTML5 / CSS3 / ES Modules** — zero dependencies, no build step
-- **Google Gemini API** (`gemini-2.5-flash`) — AI question generation via REST
-- **GitHub Pages** — static hosting, no server required
+## 🏗️ System Architecture & Workflow
 
-## Live Demo
-🚀 **[View the Live App here](https://ebendttl.github.io/iq-gen/)**
+IQ Gen is designed with a **highly secure, serverless proxy architecture** that separates client presentation from the AI ingestion backend. This ensures the application is both responsive and completely secure against credential theft.
 
-## Premium Features
-- **Deep-Linking**: Pass a role via URL (e.g., `?role=Customer+Success+Manager`) for instant, zero-click generation.
-- **One-Click Copy**: Each question includes a dedicated copy button with haptic-style visual feedback.
-- **Export to Text**: A dedicated button allows users to download the generated questions as a clean `.txt` file.
-- **Dynamic Theming**: Full Light/Dark mode support. Automatically respects OS-level preferences and remembers user overrides via `localStorage`.
-- **Accessibility (a11y)**: Built with screen-reader support in mind, utilizing `aria-live` and `aria-busy` for dynamic content announcements, plus full keyboard focus-visibility.
-- **Seamless Demo**: Includes a built-in demo API key to ensure a frictionless review experience.
+### Sequence Diagram
 
-## Getting Started
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User (Recruiter)
+    participant FE as Frontend (app.js)
+    participant Proxy as Netlify Serverless Proxy
+    participant Gemini as Google Gemini API
+
+    User->>FE: Enter Job Title & Click "Generate"
+    
+    alt Has Custom API Key in Settings (Reviewer Override)
+        FE->>Gemini: POST /v1beta/models/gemini-2.5-flash (Direct Client Call)
+        Note over FE,Gemini: Dynamic Fallback to gemini-3.1-flash-lite on 503/429
+        Gemini-->>FE: Return JSON Response
+    else Secure Zero-Friction Proxy (Default Setup)
+        FE->>Proxy: POST /.netlify/functions/generate (Payload: { jobTitle })
+        Note over Proxy: Server injects securely stored GEMINI_API_KEY
+        
+        Proxy->>Gemini: POST /v1beta/models/gemini-2.5-flash
+        
+        alt Primary Model Success (200 OK)
+            Gemini-->>Proxy: Return JSON Questions
+        else Primary Model Degraded (503 / 429 after retries)
+            Note over Proxy: Dynamic Fallback Triggered
+            Proxy->>Gemini: POST /v1beta/models/gemini-3.1-flash-lite
+            Gemini-->>Proxy: Return JSON Questions
+        end
+        
+        Proxy-->>FE: Return JSON Response
+    end
+    
+    FE->>User: Render Animated Question Cards (with Copy & Export)
+```
+
+### Flowchart: Request Routing & Fallback System
+
+```mermaid
+graph TD
+    User([User]) -->|Submits Job Title| Frontend[Vanilla HTML/JS/CSS Frontend]
+    Frontend -->|Has Custom Key?| KeyDecision{Custom API Key?}
+    
+    %% Direct Route
+    KeyDecision -->|Yes (Bypass Proxy)| DirectRoute[Client-Side Direct Call]
+    DirectRoute -->|Attempt 1| DirectPrimary[gemini-2.5-flash]
+    DirectPrimary -->|503 or 429| DirectFallback[gemini-3.1-flash-lite]
+    DirectFallback -->|Success| Output
+    DirectPrimary -->|Success| Output
+    
+    %% Proxy Route
+    KeyDecision -->|No (Secure Proxy)| ProxyRoute[POST /.netlify/functions/generate]
+    ProxyRoute --> ServerlessFn[Netlify Serverless Function]
+    ServerlessFn -->|Injects Secure Key| EnvVars[(Netlify Environment Variables)]
+    ServerlessFn -->|Attempt 1| PrimaryModel[gemini-2.5-flash]
+    
+    PrimaryModel -->|Success 200 OK| Output[Rendered Cards: Copy & Export]
+    PrimaryModel -->|503 Service Unavailable / 429 Rate Limit| FallbackDecision{Model Fallback?}
+    
+    FallbackDecision -->|Yes| FallbackModel[gemini-3.1-flash-lite]
+    FallbackModel -->|Success 200 OK| Output
+    FallbackDecision -.->|Second Fallback| BackupModel[gemini-2.5-flash-lite]
+    BackupModel -->|Success 200 OK| Output
+```
+
+---
+
+## 🛠️ Tech Stack & Key Technologies
+
+* **Frontend**: Pure HTML5, CSS3 (Vanilla design token system, responsive grids, glassmorphic UI), and ES Modules. No build tool, bundler, or heavy framework required.
+* **Serverless Backend**: Hosted on **Netlify Functions** (`netlify/functions/generate.js`) to completely hide the API key from the browser.
+* **LLM Engine**: **Google Gemini API** (`gemini-2.5-flash` with dynamic fallbacks to `gemini-3.1-flash-lite` and `gemini-2.5-flash-lite`).
+* **Persistence & State**: `sessionStorage` for temporary, tab-isolated key overrides, and `localStorage` for theme preference caching.
+
+---
+
+## 🛡️ Enterprise-Grade Security & Resiliency
+
+### 1. Zero-Friction Credential Security
+* **Serverless Proxy**: By default, client-side requests are securely proxied through Netlify's CDN edge to a Serverless Function. The `GEMINI_API_KEY` is securely injected from Netlify's encrypted vault on the server side, meaning it **never traverses the network to the user's browser**.
+* **Protected Repositories**: The `.gitignore` file is strictly configured to ensure local `.env` configuration files and large packages (`node_modules/`) are never pushed or leaked to public version control repositories.
+
+### 2. Multi-Model Fallback Shield
+To guarantee high availability and eliminate **503 (Service Unavailable)** or **429 (Resource Exhausted)** errors during times of intense Google backend demand, the application implements an automatic model fallback chain:
+1. **`gemini-2.5-flash`** (Primary high-performance model)
+2. **`gemini-3.1-flash-lite`** (Ultra-fast, high-availability frontier fallback)
+3. **`gemini-2.5-flash-lite`** (Fast, highly stable backup fallback)
+
+If a model degrades or rate-limits, the request automatically slides to the next available model in the sequence inside the same network call.
+
+---
+
+## ✨ Premium Features
+
+* **Deep-Linking**: Pass a job role via the URL parameters (e.g., `?role=Customer+Success+Manager`) to instantly trigger zero-click, beautifully animated question generations on load.
+* **One-Click Copy**: Custom cards equipped with visual haptic feedback (copy buttons dynamically morph to checkmarks upon successful Clipboard API interaction).
+* **Export to Plaintext**: Automatically packages the role, timestamp, and generated questions into a cleanly structured `.txt` file for download.
+* **Dynamic Theme Engine**: Seamless Light/Dark mode transitions respecting system preferences automatically, while keeping overrides saved locally.
+* **Strict Accessibility (a11y)**: Built with native semantic tags, custom focus outlines, keyboard navigational compliance, and dynamic `aria-live` regions to announce skeleton loads to screen readers.
+
+---
+
+## 🚀 Getting Started (Local Development)
+
+### Prerequisites
+* **Node.js** (v18 or higher recommended)
+* **NPM** (packaged automatically with Node)
+
+### Installation
 
 1. **Clone the repository**
-
    ```bash
    git clone https://github.com/YOUR_USERNAME/iq-gen.git
    cd iq-gen
    ```
 
-2. **Get a free Gemini API key**
-
-   Visit [ai.google.dev](https://ai.google.dev/) → Get API Key → Create a key in a new or existing project.
-
-3. **Open the app**
-
-   Open `index.html` directly in your browser, or serve locally:
-
+2. **Install local development dependencies**
    ```bash
-   npx serve .
+   npm install
    ```
 
-4. **Paste your API key**
+3. **Configure your API Key**
+   Create a file named `.env` in the root of the project:
+   ```env
+   GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+   ```
+   *(Get your free key at [Google AI Studio](https://aistudio.google.com/)).*
 
-   Click the **Settings** panel at the top of the page and paste your Gemini API key. The key is stored in `sessionStorage` only and is never persisted to disk or transmitted anywhere except the Gemini API.
+4. **Launch the local development environment**
+   ```bash
+   npm run dev
+   ```
+   This command starts the local **Netlify Dev** environment. It will read your local `.env` file, spin up your serverless function proxy, and serve the static files.
+   * 🖥️ Access the local application at: **[http://localhost:8888](http://localhost:8888)**
 
-5. **Generate questions**
+---
 
-   Enter any job title and click **Generate Questions** to receive 3 expert-crafted interview questions.
+## 📦 Netlify Deployment (Production)
 
-## Design Decisions
+To securely host this app live in production:
 
-- **Vanilla JS over frameworks** — The project has a single-page scope with minimal state. A framework would add complexity without benefit, and vanilla JS demonstrates core language proficiency — which is exactly what the assessment evaluates.
+1. Create a free account on [Netlify](https://www.netlify.com/).
+2. Connect your GitHub repository to a new site.
+3. In your Netlify dashboard, navigate to **Site Settings ➔ Environment Variables** and add:
+   * **Key**: `GEMINI_API_KEY`
+   * **Value**: Your actual Gemini API key.
+4. Deploy the site! Netlify will automatically build the static assets and set up the edge routes to securely map your backend proxy.
 
-- **`sessionStorage` over `localStorage`** — The API key is automatically cleared when the browser tab closes. This is a deliberate security-in-depth decision: if a user forgets to manually clear the key, the session boundary does it for them.
+---
 
-- **`responseMimeType: "application/json"` in the Gemini config** — This instructs the model to return structured JSON directly, dramatically reducing parse failures compared to extracting JSON from a free-text response. The markdown-fence stripping is retained as a safety fallback.
+## 📜 License
 
-- **Single-file architecture (per concern)** — With only four files, each mapping to a single concern (markup, style, logic, docs), there is no need for a component tree or module bundler. Every function is reachable in a single scroll, making code review fast and straightforward.
-
-## Deployment (Netlify)
-
-This project uses **Netlify** to securely host the frontend and proxy the API calls.
-
-1. Create a free account at [Netlify](https://www.netlify.com/).
-2. Connect your GitHub repository.
-3. In your Netlify Site Settings, add an Environment Variable:
-   - Key: `GEMINI_API_KEY`
-   - Value: Your actual Gemini API key.
-4. Deploy! The frontend will automatically route requests through `/.netlify/functions/generate` to keep your key completely hidden from the browser.
-
-## Security & API Keys
-
-> **Production Setup**: The API key is securely stored in a Netlify Environment Variable and accessed only via a Serverless Function (`netlify/functions/generate.js`). The frontend never sees the API key.
-
-> **Reviewer Override**: For testing purposes, reviewers can optionally input their own Gemini API key in the UI "Settings" panel. If provided, the app will bypass the proxy and hit Google directly using the provided key. The key is only stored in `sessionStorage` and is destroyed when the tab closes.
-
-## License
-
-See [LICENSE](./LICENSE).
+This project is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
