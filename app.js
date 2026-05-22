@@ -335,7 +335,8 @@ function sleep(ms) {
 
 /**
  * Extracts and parses the question array from Gemini's response shape.
- * Strips markdown code fences if present as a safety measure.
+ * Employs a robust extraction pattern to isolate the JSON array block even in the presence
+ * of markdown fences, conversational preambles, or trailing formatting noise.
  */
 function parseGeminiResponse(data) {
   const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -343,13 +344,21 @@ function parseGeminiResponse(data) {
     throw new Error("Unexpected response format from API.");
   }
 
-  // Strip markdown fences (```json ... ```) if the model wraps its output
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  // Robust array extraction: isolate the substring between the first '[' and the last ']'
+  const startIdx = raw.indexOf("[");
+  const endIdx = raw.lastIndexOf("]");
+
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
+    throw new Error("Could not parse questions. Please try again.");
+  }
+
+  const cleaned = raw.substring(startIdx, endIdx + 1).trim();
 
   let parsed;
   try {
     parsed = JSON.parse(cleaned);
-  } catch {
+  } catch (err) {
+    console.error("Failed to parse JSON string:", cleaned, err);
     throw new Error("Could not parse questions. Please try again.");
   }
 

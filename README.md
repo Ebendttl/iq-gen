@@ -8,70 +8,100 @@ AI-powered interview question generator that creates thoughtful, role-specific q
 
 IQ Gen is designed with a **highly secure, serverless proxy architecture** that separates client presentation from the AI ingestion backend. This ensures the application is both responsive and completely secure against credential theft.
 
-### Sequence Diagram
+### 1. Request Routing & Fallback System (Flowchart)
+
+This flowchart illustrates how client requests are routed depending on the presence of a custom key, and how the **dynamic fallback system** recovers from transient API errors.
+
+```mermaid
+flowchart TD
+    %% Class Definitions for Premium Theme (Mocha / Material Dark)
+    classDef startEnd fill:#1e1e2e,stroke:#cba6f7,stroke-width:2px,color:#cdd6f4,font-weight:bold;
+    classDef ui fill:#181825,stroke:#89b4fa,stroke-width:2px,color:#cdd6f4;
+    classDef decision fill:#313244,stroke:#f9e2af,stroke-width:2px,color:#cdd6f4,font-weight:bold;
+    classDef secure fill:#112a21,stroke:#a6e3a1,stroke-width:2px,color:#a6e3a1;
+    classDef bypass fill:#2c1921,stroke:#f38ba8,stroke-width:2px,color:#f38ba8;
+    classDef model fill:#1e1e2e,stroke:#cba6f7,stroke-width:2px,color:#cdd6f4;
+    classDef output fill:#181825,stroke:#89dceb,stroke-width:2px,color:#89dceb,font-weight:bold;
+
+    User([Recruiter User]) -->|Input job title| Frontend[Vanilla HTML/JS/CSS App]
+    Frontend --> KeyDecision{Custom API Key?}
+    
+    %% Proxy Route
+    KeyDecision -->|No - Default Proxy| ProxyRoute["POST /.netlify/functions/generate"]
+    ProxyRoute --> ServerlessFn["Netlify Serverless Function"]
+    ServerlessFn -->|Injects secret API key| EnvVars[("Netlify Environment Variables")]
+    EnvVars --> PrimaryModel["Primary: gemini-2.5-flash"]
+    
+    %% Direct Route
+    KeyDecision -->|Yes - Reviewer Bypass| DirectRoute["Direct Client-Side Fetch"]
+    DirectRoute --> DirectPrimary["Primary: gemini-2.5-flash"]
+    
+    %% Fallbacks
+    PrimaryModel -->|503 or 429 Error| Fallback1["Fallback A: gemini-3.1-flash-lite"]
+    DirectPrimary -->|503 or 429 Error| DirectFallback["Fallback A: gemini-3.1-flash-lite"]
+    
+    Fallback1 -->|503 or 429 Error| Fallback2["Fallback B: gemini-2.5-flash-lite"]
+    
+    %% Success Outputs
+    PrimaryModel -->|200 OK| Output["Render & Display Animated Cards"]
+    DirectPrimary -->|200 OK| Output
+    Fallback1 -->|200 OK| Output
+    DirectFallback -->|200 OK| Output
+    Fallback2 -->|200 OK| Output
+
+    %% Assign Styles
+    class User startEnd;
+    class Frontend ui;
+    class KeyDecision decision;
+    class ProxyRoute,ServerlessFn,EnvVars secure;
+    class DirectRoute bypass;
+    class PrimaryModel,DirectPrimary,Fallback1,DirectFallback,Fallback2 model;
+    class Output output;
+```
+
+---
+
+### 2. Detailed Lifecycle & Data Flow (Sequence Diagram)
+
+This sequence diagram details the timelines and lifecycles of both request models. By separating the workflows, legibility is dramatically enhanced.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as User (Recruiter)
+    actor User as Recruiter
     participant FE as Frontend (app.js)
-    participant Proxy as Netlify Serverless Proxy
-    participant Gemini as Google Gemini API
+    participant Proxy as Serverless Proxy
+    participant Gemini as Gemini API
 
-    User->>FE: Enter Job Title & Click "Generate"
-    
-    alt Has Custom API Key in Settings (Reviewer Override)
-        FE->>Gemini: POST /v1beta/models/gemini-2.5-flash (Direct Client Call)
-        Note over FE,Gemini: Dynamic Fallback to gemini-3.1-flash-lite on 503/429
-        Gemini-->>FE: Return JSON Response
-    else Secure Zero-Friction Proxy (Default Setup)
-        FE->>Proxy: POST /.netlify/functions/generate (Payload: { jobTitle })
-        Note over Proxy: Server injects securely stored GEMINI_API_KEY
-        
-        Proxy->>Gemini: POST /v1beta/models/gemini-2.5-flash
-        
-        alt Primary Model Success (200 OK)
-            Gemini-->>Proxy: Return JSON Questions
-        else Primary Model Degraded (503 / 429 after retries)
-            Note over Proxy: Dynamic Fallback Triggered
-            Proxy->>Gemini: POST /v1beta/models/gemini-3.1-flash-lite
-            Gemini-->>Proxy: Return JSON Questions
-        end
-        
-        Proxy-->>FE: Return JSON Response
+    Note over User,Gemini: Default Secure Flow (Zero-Friction)
+    User->>FE: Click "Generate Questions"
+    FE->>Proxy: POST /generate { jobTitle }
+    Note over Proxy: Server injects hidden GEMINI_API_KEY
+    Proxy->>Gemini: POST gemini-2.5-flash
+    alt Success (200 OK)
+        Gemini-->>Proxy: JSON Questions
+    else 503 / 429 Triggered
+        Note over Proxy: Dynamic Fallback
+        Proxy->>Gemini: POST gemini-3.1-flash-lite
+        Gemini-->>Proxy: JSON Questions
     end
-    
-    FE->>User: Render Animated Question Cards (with Copy & Export)
+    Proxy-->>FE: JSON Array Response
+    FE->>User: Render Question Cards
+
+    Note over User,Gemini: Optional Reviewer Flow (Custom API Key)
+    User->>FE: Click "Generate Questions"
+    FE->>Gemini: POST gemini-2.5-flash (Direct with Key)
+    alt Success (200 OK)
+        Gemini-->>FE: JSON Questions
+    else 503 / 429 Triggered
+        Note over FE: Dynamic Fallback
+        FE->>Gemini: POST gemini-3.1-flash-lite
+        Gemini-->>FE: JSON Questions
+    end
+    FE->>User: Render Question Cards
 ```
 
-### Flowchart: Request Routing & Fallback System
-
-```mermaid
-graph TD
-    User([User]) -->|Submits Job Title| Frontend[Vanilla HTML/JS/CSS Frontend]
-    Frontend -->|Has Custom Key?| KeyDecision{Custom API Key?}
-    
-    %% Direct Route
-    KeyDecision -->|Yes (Bypass Proxy)| DirectRoute[Client-Side Direct Call]
-    DirectRoute -->|Attempt 1| DirectPrimary[gemini-2.5-flash]
-    DirectPrimary -->|503 or 429| DirectFallback[gemini-3.1-flash-lite]
-    DirectFallback -->|Success| Output
-    DirectPrimary -->|Success| Output
-    
-    %% Proxy Route
-    KeyDecision -->|No (Secure Proxy)| ProxyRoute[POST /.netlify/functions/generate]
-    ProxyRoute --> ServerlessFn[Netlify Serverless Function]
-    ServerlessFn -->|Injects Secure Key| EnvVars[(Netlify Environment Variables)]
-    ServerlessFn -->|Attempt 1| PrimaryModel[gemini-2.5-flash]
-    
-    PrimaryModel -->|Success 200 OK| Output[Rendered Cards: Copy & Export]
-    PrimaryModel -->|503 Service Unavailable / 429 Rate Limit| FallbackDecision{Model Fallback?}
-    
-    FallbackDecision -->|Yes| FallbackModel[gemini-3.1-flash-lite]
-    FallbackModel -->|Success 200 OK| Output
-    FallbackDecision -.->|Second Fallback| BackupModel[gemini-2.5-flash-lite]
-    BackupModel -->|Success 200 OK| Output
-```
+---
 
 ---
 
