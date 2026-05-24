@@ -727,3 +727,89 @@ body {
     flex-direction: column;
   }
 }
+
+/* ==========================================================================
+   Info Banners (Cache, Warnings) & Slow Network UX
+   ========================================================================== */
+
+.info-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
+  animation: fadeInUp 0.35s ease forwards;
+  box-shadow: var(--shadow);
+}
+
+.info-banner--cache {
+  background: rgba(39, 174, 96, 0.08);
+  border: 1px solid rgba(39, 174, 96, 0.2);
+  color: var(--success);
+}
+
+[data-theme="dark"] .info-banner--cache {
+  background: rgba(39, 174, 96, 0.12);
+}
+
+.info-banner--warning {
+  background: rgba(232, 100, 42, 0.08);
+  border: 1px solid rgba(232, 100, 42, 0.2);
+  color: var(--highlight);
+}
+
+[data-theme="dark"] .info-banner--warning {
+  background: rgba(232, 100, 42, 0.12);
+}
+
+.btn-text-action {
+  background: none;
+  border: none;
+  color: var(--highlight);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 0.5rem;
+  transition: color var(--transition);
+}
+
+.btn-text-action:hover {
+  color: var(--highlight-hover);
+}
+
+.slow-network-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow);
+  animation: fadeInUp 0.3s ease forwards;
+}
+
+.spinner-small {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--highlight);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -8,6 +8,7 @@ const NETLIFY_PROXY_ENDPOINT = "/.netlify/functions/generate";
 const DEFAULT_JOB_TITLE = "Customer Success Manager";
 const QUESTION_COUNT = 3;
 const SESSION_KEY = "iq-gen-api-key";
+const CACHE_KEY = "iq-gen-questions-cache";
 
 const SYSTEM_PROMPT_TEMPLATE = `You are an expert technical recruiter and hiring manager with 20 years of experience across SaaS, professional services, and enterprise industries. Generate exactly ${QUESTION_COUNT} interview questions for the role of {{JOB_TITLE}}. Each question must be distinct in type: one behavioural (past experience), one situational (hypothetical scenario), and one role-specific competency question. Each must be specific enough that a generic answer would clearly fall short, and should reveal how the candidate thinks, not just what they have done. Return ONLY a valid JSON array of exactly ${QUESTION_COUNT} strings. No preamble. No markdown. No numbering. No explanation. Raw JSON only.`;
 
@@ -15,6 +16,60 @@ const SYSTEM_PROMPT_TEMPLATE = `You are an expert technical recruiter and hiring
 let els = {};
 let lastGeneratedQuestions = [];
 let lastJobTitle = "";
+
+// ============================================================================
+// Intelligent Offline / Cache Management
+// ============================================================================
+
+function getCache() {
+  try {
+    return JSON.parse(localStorage.getItem(CACHE_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function setCache(cache) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch (e) {
+    console.error("Failed to write local questions cache:", e);
+  }
+}
+
+function getCachedQuestions(jobTitle) {
+  const cache = getCache();
+  const normalized = jobTitle.trim().toLowerCase();
+  return cache[normalized];
+}
+
+function saveQuestionsToCache(jobTitle, questions) {
+  const cache = getCache();
+  const normalized = jobTitle.trim().toLowerCase();
+  cache[normalized] = {
+    jobTitle: jobTitle.trim(),
+    questions,
+    timestamp: Date.now()
+  };
+  setCache(cache);
+}
+
+function showSlowNetworkWarning() {
+  // Prevent duplicate warning banners
+  if (document.querySelector(".slow-network-banner")) return;
+
+  const warningEl = document.createElement("div");
+  warningEl.className = "slow-network-banner";
+  warningEl.innerHTML = `
+    <div class="spinner-small"></div>
+    <span>Your connection seems a bit slow, but we are still trying to generate...</span>
+  `;
+  
+  const firstSkeleton = els.results.querySelector(".skeleton-card");
+  if (firstSkeleton) {
+    els.results.insertBefore(warningEl, firstSkeleton);
+  }
+}
 
 // ============================================================================
 // Initialisation
@@ -222,6 +277,12 @@ async function fetchInterviewQuestions(jobTitle) {
       topP: 0.95,
       maxOutputTokens: 1024,
       responseMimeType: "application/json",
+      responseSchema: {
+        type: "ARRAY",
+        items: {
+          type: "STRING"
+        }
+      }
     },
   };
 
@@ -358,8 +419,24 @@ function parseGeminiResponse(data) {
   try {
     parsed = JSON.parse(cleaned);
   } catch (err) {
-    console.error("Failed to parse JSON string:", cleaned, err);
-    throw new Error("Could not parse questions. Please try again.");
+    // Attempt custom sanitisation for control characters or unescaped values
+    try {
+      const sanitized = cleaned
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+        .replace(/\\'/g, "'");
+      parsed = JSON.parse(sanitized);
+    } catch {
+      console.error("Failed to parse JSON string:", cleaned, err);
+      throw new Error("Could not parse questions. Please try again.");
+    }
+  }
+
+  // If the parsed response is a JSON object containing an array rather than the array itself
+  if (!Array.isArray(parsed) && typeof parsed === "object" && parsed !== null) {
+    const extractedArray = Object.values(parsed).find(val => Array.isArray(val));
+    if (extractedArray) {
+      parsed = extractedArray;
+    }
   }
 
   if (!Array.isArray(parsed) || parsed.length !== QUESTION_COUNT) {
@@ -374,10 +451,31 @@ function parseGeminiResponse(data) {
 // ============================================================================
 
 /** Renders question cards into the results area with staggered animation. */
-function renderQuestions(questions) {
+function renderQuestions(questions, isFromCache = false, fallbackMessage = null) {
   const labels = ["Behavioural", "Situational", "Competency"];
 
-  els.results.innerHTML = questions
+  let html = "";
+
+  if (fallbackMessage) {
+    html += `
+      <div class="info-banner info-banner--warning" role="alert">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span>${escapeHtml(fallbackMessage)}</span>
+      </div>`;
+  } else if (isFromCache) {
+    html += `
+      <div class="info-banner info-banner--cache" role="status">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        <span>Loaded instantly from local cache.</span>
+        <button type="button" class="btn-text-action" onclick="handleSubmit(null, true)">Force Refresh</button>
+      </div>`;
+  }
+
+  html += questions
     .map(
       (q, i) => `
       <article class="question-card" style="animation-delay: ${i * 0.1}s">
@@ -396,7 +494,7 @@ function renderQuestions(questions) {
 
   // Append Export Button
   const exportDelay = questions.length * 0.1;
-  els.results.innerHTML += `
+  html += `
     <div class="export-container" style="animation-delay: ${exportDelay}s">
       <button type="button" class="btn-secondary btn-export" onclick="exportAsText()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -404,6 +502,8 @@ function renderQuestions(questions) {
       </button>
     </div>
   `;
+
+  els.results.innerHTML = html;
 }
 
 /**
@@ -433,6 +533,7 @@ async function copyToClipboard(button, text) {
 // Expose to global scope for inline onclick handlers
 window.copyToClipboard = copyToClipboard;
 window.exportAsText = exportAsText;
+window.handleSubmit = handleSubmit;
 
 /**
  * Creates a text file from the generated questions and triggers a download.
@@ -498,11 +599,11 @@ function showError(message) {
 // ============================================================================
 
 /** Primary submit handler — orchestrates the full generate flow. */
-async function handleSubmit(event) {
-  event.preventDefault();
+async function handleSubmit(event, forceRefresh = false) {
+  if (event) event.preventDefault();
   setValidationMessage(null);
 
-  const jobTitle = els.jobTitleInput.value;
+  const jobTitle = els.jobTitleInput.value.trim();
 
   const validationError = validateInput(jobTitle);
   if (validationError) {
@@ -510,15 +611,44 @@ async function handleSubmit(event) {
     return;
   }
 
+  // Fast Path: Serve instantly from Cache if available and not a forced regeneration
+  const cached = getCachedQuestions(jobTitle);
+  if (cached && !forceRefresh) {
+    lastGeneratedQuestions = cached.questions;
+    lastJobTitle = cached.jobTitle;
+    renderQuestions(cached.questions, true);
+    return;
+  }
+
   setLoadingState(true);
+
+  // Set a timer to trigger the slow network warning after 3.5 seconds
+  const warningTimeout = setTimeout(() => {
+    showSlowNetworkWarning();
+  }, 3500);
 
   try {
     const questions = await fetchInterviewQuestions(jobTitle);
+    clearTimeout(warningTimeout);
+    
+    // Save to local cache for fast offline retrieval later
+    saveQuestionsToCache(jobTitle, questions);
+
     lastGeneratedQuestions = questions;
     lastJobTitle = jobTitle;
-    renderQuestions(questions);
+    renderQuestions(questions, false);
   } catch (err) {
-    showError(err.message);
+    clearTimeout(warningTimeout);
+    
+    // Robust Error Mitigation: Fall back to cache even if user clicked refresh but network failed
+    if (cached) {
+      console.warn("Generation failed. Loaded fallback questions from cache:", err);
+      lastGeneratedQuestions = cached.questions;
+      lastJobTitle = cached.jobTitle;
+      renderQuestions(cached.questions, true, "Offline or poor network. Loaded last successful generation.");
+    } else {
+      showError(err.message);
+    }
   } finally {
     setLoadingState(false);
   }

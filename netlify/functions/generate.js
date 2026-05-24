@@ -28,6 +28,7 @@ exports.handler = async function (event, context) {
   const QUESTION_COUNT = 3;
   const SYSTEM_PROMPT = `You are an expert technical recruiter and hiring manager with 20 years of experience across SaaS, professional services, and enterprise industries. Generate exactly ${QUESTION_COUNT} interview questions for the role of ${jobTitle}. Each question must be distinct in type: one behavioural (past experience), one situational (hypothetical scenario), and one role-specific competency question. Each must be specific enough that a generic answer would clearly fall short, and should reveal how the candidate thinks, not just what they have done. Return ONLY a valid JSON array of exactly ${QUESTION_COUNT} strings. No preamble. No markdown. No numbering. No explanation. Raw JSON only.`;
 
+  // Structured Outputs (responseSchema) ensures the model returns a valid JSON array of strings
   const payload = {
     contents: [{ role: "user", parts: [{ text: SYSTEM_PROMPT }] }],
     generationConfig: {
@@ -36,77 +37,74 @@ exports.handler = async function (event, context) {
       topP: 0.95,
       maxOutputTokens: 1024,
       responseMimeType: "application/json",
+      responseSchema: {
+        type: "ARRAY",
+        items: {
+          type: "STRING"
+        }
+      }
     },
   };
 
   // -----------------------------------------------------------------------
-  // Robust Model Fallback and Retry Strategy (Server-Side)
+  // Robust Model Fallback and Fast Failover Strategy (Server-Side)
   // -----------------------------------------------------------------------
   const MODELS = ["gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"];
 
   for (const model of MODELS) {
     console.log(`Attempting question generation with model: ${model}`);
-    const MAX_RETRIES = 2;
-    const BASE_DELAY_MS = 1500;
+    
+    // In serverless environment, fail-fast to the next model is superior to retry-delay
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s model timeout
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          }
-        );
-
-        const data = await response.json();
-
-        if (response.ok) {
-          console.log(`Successfully generated questions using model: ${model}`);
-          return {
-            statusCode: 200,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-            },
-            body: JSON.stringify(data),
-          };
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
         }
+      );
+      
+      clearTimeout(timeoutId);
+      const data = await response.json();
 
-        console.warn(`Model ${model} returned status ${response.status}:`, data?.error?.message);
-
-        // If it's a client error (e.g., 400 or 403), fail immediately with no fallback
-        if (response.status === 400 || response.status === 403) {
-          return {
-            statusCode: response.status,
-            body: JSON.stringify({ error: { message: data?.error?.message || "Client error" } }),
-          };
-        }
-
-        // If it's a 429 rate limit and attempts remain, retry with exponential backoff
-        if (response.status === 429 && attempt < MAX_RETRIES) {
-          const delay = BASE_DELAY_MS * Math.pow(2, attempt);
-          console.warn(`Rate limited (429) for ${model}. Retrying in ${delay}ms... (attempt ${attempt + 1}/${MAX_RETRIES})`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          continue;
-        }
-
-        // For 503 or exhausted 429 rate-limits, break and fall back to the next model
-        break;
-
-      } catch (error) {
-        console.error(`Fetch error with model ${model}:`, error);
-        if (attempt < MAX_RETRIES) {
-          await new Promise((resolve) => setTimeout(resolve, BASE_DELAY_MS * Math.pow(2, attempt)));
-          continue;
-        }
-        break;
+      if (response.ok) {
+        console.log(`Successfully generated questions using model: ${model}`);
+        return {
+          statusCode: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+          body: JSON.stringify(data),
+        };
       }
+
+      console.warn(`Model ${model} returned status ${response.status}:`, data?.error?.message);
+
+      // If it's a client error (e.g., 400 or 403), fail immediately without fallback
+      if (response.status === 400 || response.status === 403) {
+        return {
+          statusCode: response.status,
+          body: JSON.stringify({ error: { message: data?.error?.message || "Client error" } }),
+        };
+      }
+
+      // For rate limits (429) or busy server (503), fall back instantly to the next model
+      continue;
+
+    } catch (error) {
+      console.error(`Fetch error or timeout with model ${model}:`, error);
+      // Fall back instantly to next model
+      continue;
     }
   }
 
-  // All models failed
+  // All models failed or timed out
   return {
     statusCode: 503,
     body: JSON.stringify({

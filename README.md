@@ -128,6 +128,26 @@ To guarantee high availability and eliminate **503 (Service Unavailable)** or **
 
 If a model degrades or rate-limits, the request automatically slides to the next available model in the sequence inside the same network call.
 
+### 3. Fail-Fast Model Watchdog (AbortController)
+Serverless functions (like Netlify Functions) have strict execution limits (10 seconds on the free tier). Standard network retries with delays can easily trigger Netlify server termination, returning a hard `502 Bad Gateway` to users. To solve this, the serverless handler assigns a **6-second watchdog timeout** to each model request. If a model hangs or is congested, the request aborts instantly and switches to the next model in the fallback chain, ensuring successful responses well under the serverless execution limit.
+
+### 4. Structured Outputs (JSON Schema Forcing)
+To prevent LLM formatting anomalies (like conversational prefixes, unescaped markdown blocks, or corrupted arrays), the backend forces 100% deterministic outputs using Gemini's native **Structured Outputs** framework:
+```javascript
+responseMimeType: "application/json",
+responseSchema: {
+  type: "ARRAY",
+  items: { type: "STRING" }
+}
+```
+This forces the model to strictly return a valid JSON array of strings, reducing token overhead, increasing generation speed, and eliminating parsing failures.
+
+### 5. Resilient Offline-First Caching Engine
+* **Local Storage Caching**: Every successful generation is cached in `localStorage` under `iq-gen-questions-cache` indexed by job title.
+* **Instant loads (<10ms)**: Searching for a previously generated role bypasses the network entirely, loading the questions in under 10ms with a custom caching badge and a "Force Refresh" action button.
+* **Graceful Degradation**: If your connection degrades or goes completely offline, clicking regenerate will cleanly load the last successful cached version of the questions alongside a prominent status banner: *"Offline or poor network. Loaded last successful generation."*
+* **Connection Speed Awareness**: If the network request takes longer than **3.5 seconds**, a beautiful speed-alert banner automatically appears: *"Your connection seems a bit slow, but we are still trying to generate..."* so the user is kept informed throughout.
+
 ---
 
 ## ✨ Premium Features
