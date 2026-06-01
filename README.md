@@ -15,13 +15,13 @@ This flowchart illustrates how client requests are routed depending on the prese
 ```mermaid
 flowchart TD
     %% Class Definitions for Premium Theme (Mocha / Material Dark)
-    classDef startEnd fill:#1e1e2e,stroke:#cba6f7,stroke-width:2px,color:#cdd6f4,font-weight:bold;
-    classDef ui fill:#181825,stroke:#89b4fa,stroke-width:2px,color:#cdd6f4;
-    classDef decision fill:#313244,stroke:#f9e2af,stroke-width:2px,color:#cdd6f4,font-weight:bold;
-    classDef secure fill:#112a21,stroke:#a6e3a1,stroke-width:2px,color:#a6e3a1;
-    classDef bypass fill:#2c1921,stroke:#f38ba8,stroke-width:2px,color:#f38ba8;
-    classDef model fill:#1e1e2e,stroke:#cba6f7,stroke-width:2px,color:#cdd6f4;
-    classDef output fill:#181825,stroke:#89dceb,stroke-width:2px,color:#89dceb,font-weight:bold;
+    classDef startEnd fill:#1e1e2e,stroke:#cba6f7,stroke-width:2px,color:#cdd6f4,font-weight:bold
+    classDef ui fill:#181825,stroke:#89b4fa,stroke-width:2px,color:#cdd6f4
+    classDef decision fill:#313244,stroke:#f9e2af,stroke-width:2px,color:#cdd6f4,font-weight:bold
+    classDef secure fill:#112a21,stroke:#a6e3a1,stroke-width:2px,color:#a6e3a1
+    classDef bypass fill:#2c1921,stroke:#f38ba8,stroke-width:2px,color:#f38ba8
+    classDef model fill:#1e1e2e,stroke:#cba6f7,stroke-width:2px,color:#cdd6f4
+    classDef output fill:#181825,stroke:#89dceb,stroke-width:2px,color:#89dceb,font-weight:bold
 
     User([Recruiter User]) -->|Input job title| Frontend[Vanilla HTML/JS/CSS App]
     Frontend --> KeyDecision{Custom API Key?}
@@ -29,7 +29,7 @@ flowchart TD
     %% Proxy Route
     KeyDecision -->|No - Default Proxy| ProxyRoute["POST /.netlify/functions/generate"]
     ProxyRoute --> ServerlessFn["Netlify Serverless Function"]
-    ServerlessFn -->|Injects secret API key| EnvVars[("Netlify Environment Variables")]
+    ServerlessFn -->|Injects secret API key| EnvVars[(Netlify Environment Variables)]
     EnvVars --> PrimaryModel["Primary: gemini-2.5-flash"]
     
     %% Direct Route
@@ -44,19 +44,19 @@ flowchart TD
     
     %% Success Outputs
     PrimaryModel -->|200 OK| Output["Render & Display Animated Cards"]
-    DirectPrimary -->|200 OK| Output
-    Fallback1 -->|200 OK| Output
-    DirectFallback -->|200 OK| Output
-    Fallback2 -->|200 OK| Output
+    DirectPrimary --> Output
+    Fallback1 --> Output
+    DirectFallback --> Output
+    Fallback2 --> Output
 
     %% Assign Styles
-    class User startEnd;
-    class Frontend ui;
-    class KeyDecision decision;
-    class ProxyRoute,ServerlessFn,EnvVars secure;
-    class DirectRoute bypass;
-    class PrimaryModel,DirectPrimary,Fallback1,DirectFallback,Fallback2 model;
-    class Output output;
+    class User startEnd
+    class Frontend ui
+    class KeyDecision decision
+    class ProxyRoute,ServerlessFn,EnvVars secure
+    class DirectRoute bypass
+    class PrimaryModel,DirectPrimary,Fallback1,DirectFallback,Fallback2 model
+    class Output output
 ```
 
 ---
@@ -68,10 +68,10 @@ This sequence diagram details the timelines and lifecycles of both request model
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Recruiter
-    participant FE as Frontend (app.js)
-    participant Proxy as Serverless Proxy
-    participant Gemini as Gemini API
+    actor User as "Recruiter"
+    participant FE as "Frontend (app.js)"
+    participant Proxy as "Serverless Proxy"
+    participant Gemini as "Gemini API"
 
     Note over User,Gemini: Default Secure Flow (Zero-Friction)
     User->>FE: Click "Generate Questions"
